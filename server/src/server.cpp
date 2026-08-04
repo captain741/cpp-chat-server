@@ -1,7 +1,36 @@
 #include<iostream>
+#include<thread>
 #include<sys/socket.h>
 #include<netinet/in.h>
 #include<unistd.h>
+
+//function run in thread for each client
+void handle_client(int client_fd){
+    char buffer[1024];
+    while(true){
+   //waiting data from client
+   //Read data from TCP Stream
+    ssize_t bytes_received = recv(client_fd,buffer,sizeof(buffer)-1,0);
+    if(bytes_received > 0){
+        buffer[bytes_received] = '\0';
+        std::cout<<"[FD "<<client_fd <<"] Received " << buffer << std::endl;
+        // Echo data for client
+        ssize_t bytes_sent = send(client_fd,buffer,bytes_received,0);
+        if(bytes_sent == -1){
+            perror("send");
+            break;
+        }
+    }else if(bytes_received == 0){
+        std::cout<<" Client disconnect. FD= " << client_fd <<std::endl;
+        break;
+    }
+    else{
+        perror("recv");
+        break;
+    }
+    }
+        close(client_fd);
+}
 
 int main(){
 	std::cout << "Chat Server Starting..." << std::endl;
@@ -49,32 +78,11 @@ while(true) {
         continue;
     }
     std::cout<<"New client connected. FD = "<< client_fd << std::endl;
-    while(true){
-    //Buffer used to receive data from client
-    char buffer[1024] = {0};
-    //Read data from TCP Stream
-    ssize_t bytes_received = recv(client_fd,buffer,sizeof(buffer)-1,0);
-    if(bytes_received > 0){
-        buffer[bytes_received] = '\0';
-        std::cout<<"Received " << buffer << std::endl;
-        // Echo data for client
-        ssize_t bytes_sent = send(client_fd,buffer,bytes_received,0);
-        if(bytes_sent == -1){
-            perror("send");
-            break;
-        }
-    }else if(bytes_received == 0){
-        std::cout<<" Client disconnect." <<std::endl;
-        break;
-    }
-    else{
-        perror("recv");
-        break;
-    }
-}
+    std::thread t(handle_client,client_fd);
+    t.detach();
     //Close client connection immediately
     // This is temporary for learning purposes
-    close(client_fd);
+//    close(client_fd);
 }   
 close(server_fd);
     return 0;
