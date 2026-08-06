@@ -3,6 +3,13 @@
 #include<sys/socket.h>
 #include<netinet/in.h>
 #include<unistd.h>
+#include<vector>
+#include<mutex>
+#include<algorithm>
+
+// List of all currently online clients
+std::vector<int> clients;
+std::mutex clients_mutex;
 
 //function run in thread for each client
 void handle_client(int client_fd){
@@ -15,13 +22,27 @@ void handle_client(int client_fd){
         buffer[bytes_received] = '\0';
         std::cout<<"[FD "<<client_fd <<"] Received " << buffer << std::endl;
         // Echo data for client
-        ssize_t bytes_sent = send(client_fd,buffer,bytes_received,0);
-        if(bytes_sent == -1){
+        // ssize_t bytes_sent = send(client_fd,buffer,bytes_received,0);
+        // if(bytes_sent == -1){
+        //     perror("send");
+        //     break;
+        // }
+        std::lock_guard<std::mutex> lock(clients_mutex);
+        for(int fd : clients){
+          //Do not return to the sender.
+          if(fd == client_fd){
+            continue;
+          }
+          ssize_t sent = send(fd,buffer,bytes_received,0);
+          if(sent <0){
             perror("send");
-            break;
+          }
         }
     }else if(bytes_received == 0){
         std::cout<<" Client disconnect. FD= " << client_fd <<std::endl;
+        //delete clients when disconnect
+        std::lock_guard<std::mutex> lock(clients_mutex);
+        clients.erase(std::remove(clients.begin(),clients.end(),client_fd),clients.end());
         break;
     }
     else{
@@ -78,6 +99,10 @@ while(true) {
         continue;
     }
     std::cout<<"New client connected. FD = "<< client_fd << std::endl;
+    // add new client into vector
+    std::lock_guard<std::mutex> lock(clients_mutex);
+    clients.push_back(client_fd);
+    std::cout <<"Online Clients: " << clients.size()<< std::endl;
     std::thread t(handle_client,client_fd);
     t.detach();
     //Close client connection immediately
