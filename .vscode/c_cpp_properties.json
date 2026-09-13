@@ -1,0 +1,18 @@
+{
+  "configurations": [
+    {
+      "name": "WSL-GCC",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "${workspaceFolder}/cpp-chat-server/server/include",
+        "${workspaceFolder}/cpp-chat-server/client/include"
+      ],
+      "compilerPath": "/usr/bin/g++",
+      "cStandard": "c17",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "linux-gcc-x64",
+      "compileCommands": "${workspaceFolder}/cpp-chat-server/compile_commands.json"
+    }
+  ],
+  "version": 4
+}
