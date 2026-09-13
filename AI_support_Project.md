@@ -90,3 +90,65 @@ và kết quả kiểm tra.
   ```bash
   mv AI_support_Project.md ..
   ```
+
+### 2026-09-13 - Đánh giá và roadmap nâng cấp
+
+Đánh giá hiện tại: project đã đạt mức prototype tốt cho việc học C++ system
+programming và có thể trình bày trong phỏng vấn Junior. Kiến trúc đã có
+`ChatServer`/`ChatRoom`, TCP, nhiều client, mutex, command và private message.
+Tuy nhiên chưa nên gọi là production-ready vì protocol, lifecycle thread,
+error handling, test và bảo mật còn đơn giản.
+
+Thứ tự ưu tiên đề xuất:
+
+1. **Ổn định protocol TCP**
+   - Thêm framing rõ ràng, ví dụ newline-delimited message.
+   - Xử lý trường hợp một `recv()` nhận nhiều message hoặc chỉ nhận một phần.
+   - Viết `sendAll()` để xử lý partial send.
+   - Giới hạn kích thước message và validate username/message.
+
+2. **Sửa concurrency và shutdown**
+   - Đổi `running_` từ `bool` sang `std::atomic<bool>`.
+   - Quản lý client thread thay vì detach hoàn toàn, hoặc tạo cơ chế stop
+     session rõ ràng.
+   - Xem xét giảm vùng giữ mutex; không giữ mutex trong lúc `send()` lâu.
+   - Kiểm tra race bằng ThreadSanitizer nếu môi trường hỗ trợ.
+
+3. **Hoàn thiện quản lý user**
+   - Không cho phép username rỗng hoặc trùng.
+   - Chuẩn hóa username và giới hạn độ dài.
+   - Xử lý client mất kết nối giữa lúc broadcast.
+   - Có thể bổ sung `/quit`, `/kick` và quyền admin sau khi nền tảng ổn định.
+
+4. **Tách kiến trúc và tăng khả năng test**
+   - Tách `ChatRoom`, `CommandHandler`, protocol và utility thành module riêng.
+   - Tạo unit test cho `ChatRoom` và parser command.
+   - Tạo integration test cho hai client chat, private message và disconnect.
+   - Cập nhật Makefile để build object files và test target.
+
+5. **Logging và cấu hình**
+   - Tách log server khỏi `std::cout`, thêm timestamp và level.
+   - Cho phép cấu hình port, backlog, message limit từ command line hoặc file.
+   - Tránh hard-code `127.0.0.1`, `8080` và buffer size ở nhiều nơi.
+
+6. **Bảo mật và độ tin cậy**
+   - Thêm authentication nếu project cần tài khoản thật.
+   - Không log password/token.
+   - Xử lý `SIGPIPE` hoặc dùng cờ phù hợp khi send.
+   - Có rate limit cơ bản để một client không spam server.
+
+7. **Khả năng mở rộng**
+   - Với vài client, one-thread-per-client vẫn phù hợp.
+   - Khi cần nhiều client, chuyển sang thread pool hoặc event loop bằng
+     `poll`, `epoll` hoặc Boost.Asio.
+   - Sau đó mới cân nhắc JSON protocol, database, room chat và Qt GUI.
+
+Các việc nên làm ngay theo thứ tự ngắn hạn:
+
+```text
+1. message framing + sendAll
+2. username validation/duplicate check
+3. atomic running_ và shutdown an toàn
+4. unit tests cho ChatRoom/command parser
+5. cập nhật Makefile và README theo code thực tế
+```
