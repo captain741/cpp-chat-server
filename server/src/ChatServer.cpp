@@ -18,7 +18,7 @@ std::string trimWhitespace(const std::string& value) {
     const auto end = value.find_last_not_of(whitespace);
     return value.substr(start, end - start + 1);
 }
-}  // namespace
+}  // namespace 
 
 ChatServer::ChatServer(uint16_t port, int backlog)
     : server_fd_(-1), port_(port), backlog_(backlog), running_(false) {}
