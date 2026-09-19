@@ -1,5 +1,5 @@
 #include "ChatServer.h"
-
+#include <cctype>
 #include <algorithm>
 #include <cstring>
 #include <iostream>
@@ -56,6 +56,15 @@ std::string decodeMessage(const std::string& encoded_message) {
     }
     return message;
 }
+
+std::string normalizeUsername(const std::string& username) {
+    std::string normalized = username;
+    for(char& character : normalized) {
+        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    }
+    return normalized;
+}
+
 std::string trimWhitespace(const std::string& value) {
     const std::string whitespace = " \t\r\n";
     const auto start = value.find_first_not_of(whitespace);
@@ -68,9 +77,17 @@ std::string trimWhitespace(const std::string& value) {
 }
 }  // namespace
 
-void ChatRoom::addClient(int client_fd, const std::string& username) {
+bool ChatRoom::addClient(int client_fd, const std::string& username) {
     std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& [existing_fd, existing_username] : clients_) {
+        (void)existing_fd;
+        if (normalizeUsername(existing_username) == normalizeUsername(username)) {    // kiem tra username trung ten
+            return false;
+        }
+    }
+
     clients_[client_fd] = username;
+    return true;
 }
 
 void ChatRoom::removeClient(int client_fd) {
@@ -110,7 +127,7 @@ std::vector<std::string> ChatRoom::getUsernames() const {
 int ChatRoom::findClientByUsername(const std::string& username) const {
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto& [fd, name] : clients_) {
-        if (name == username) {
+        if (normalizeUsername(name) == normalizeUsername(username)) {
             return fd;
         }
     }
@@ -222,19 +239,7 @@ void ChatServer::broadcastMessage(const std::string& message, int sender_fd) {
 }
 
 std::string ChatServer::readUsername(int client_fd) {
-    const std::string prompt = "Enter your name: ";
-    // if (send(client_fd, prompt.c_str(), prompt.size(), 0) <= 0) {
-    //     return "";
-    // }
-
-    // char name_buffer[128] = {0};
-    // const ssize_t bytes_read = recv(client_fd, name_buffer, sizeof(name_buffer) - 1, 0);
-    // if (bytes_read <= 0) {
-    //     return "";
-    // }
-
-    // name_buffer[bytes_read] = '\0';
-    // return trimWhitespace(std::string(name_buffer));
+    const std::string prompt = "Enter your name:\n";
     if(!sendAll(client_fd, prompt)) {
         return "";
     }
@@ -321,15 +326,28 @@ bool ChatServer::handleCommand(int client_fd, const std::string& message, std::s
 }
 
 void ChatServer::handleClient(int client_fd) {
-    std::string username = readUsername(client_fd);
-    if (username.empty()) {
-        close(client_fd);
-        return;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(clients_mutex_);
-        chat_room_.addClient(client_fd, username);
+    std::string username;
+    while(true) {
+        username = readUsername(client_fd);
+        if(username.empty()) {
+            close(client_fd);
+            return;
+        }
+        if(chat_room_.addClient(client_fd, username)) {
+            // thong bao cho client rang usernam dc chap nhan
+            if(!sendAll(client_fd, "USERNAME_OK\n")) {
+                perror("send");
+                close(client_fd);
+                return; 
+            }
+            break;
+        }
+        // neu username bi trung , cho phep client nhap ten khac
+        if(!sendAll(client_fd, "USERNAME_TAKEN\n")) {
+            perror("send");
+            close(client_fd);
+            return;
+        }
     }
 
     broadcastMessage(username + " joined the room\n");
@@ -348,23 +366,6 @@ void ChatServer::handleClient(int client_fd) {
             break;
         }
 
-// buffer[bytes_received] = '\0';
-// std::string message(buffer);
-// if (!message.empty() && message.back() == '\n') {
-//     message.pop_back();
-// }
-
-// std::string command_response;
-// if (handleCommand(client_fd, message, command_response)) {
-//     if (!command_response.empty()) {
-//         send(client_fd, command_response.c_str(), command_response.size(), 0);
-//     }
-//     continue;
-// }
-
-// std::string formatted_message = std::string("[") + username + "]: " + message + "\n";
-// std::cout << formatted_message;
-// broadcastMessage(formatted_message, client_fd);
      pending_data.append(buffer,static_cast<std::size_t>(bytes_received));
      if(pending_data.size() > kMaxFrameSize) {
         std::cerr << "Frame from " << username << "is too large" << std::endl;

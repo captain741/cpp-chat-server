@@ -181,6 +181,7 @@ Các việc nên làm ngay theo thứ tự ngắn hạn:
 3. atomic running_ và shutdown an toàn
 4. unit tests cho ChatRoom/command parser
 5. cập nhật Makefile và README theo code thực tế
+```
 
 ### 2026-09-19 - Test plan cho giai đoạn protocol
 
@@ -199,4 +200,13 @@ Các việc nên làm ngay theo thứ tự ngắn hạn:
   thiếu newline, payload lớn hơn buffer, username có whitespace, username
   trùng, nhiều command trong một `send`, client đóng khi broadcast và kiểm tra
   server có còn accept client mới sau lỗi.
+
+### 2026-09-19 - Chặn username trùng
+
+- `ChatRoom::addClient()` được đổi từ `void` sang `bool`.
+- Kiểm tra username đã tồn tại và thêm client được thực hiện dưới cùng
+  `ChatRoom::mutex_`, nên đây là một thao tác nguyên tử đối với các client
+  đồng thời.
+- Nếu username trùng, server gửi thông báo lỗi, đóng socket client mới và
+  không broadcast sự kiện `joined`.
 ```

@@ -45,6 +45,27 @@ std::string encodeDraftLine(const std::string& line) {
     }
     return encoded;
 }
+
+bool receiveLine(int socket_fd, std::string& line) {
+    line.clear();
+
+    while (true) {
+        char character = '\0';
+
+        const ssize_t bytes_received =
+            recv(socket_fd, &character, 1, 0);
+
+        if (bytes_received <= 0) {
+            return false;
+        }
+
+        if (character == '\n') {
+            return true;
+        }
+
+        line.push_back(character);
+    }
+}
 }
 int main() { 
     // địa chỉ server đang chạy
@@ -75,24 +96,64 @@ int main() {
 
     std::cout << "Connected to chat server." << std::endl;
 // Client nhận lời nhắn "Enter your name: " từ server
-    char prompt[256] = {0};
-    ssize_t prompt_size = recv(client_fd, prompt, sizeof(prompt) - 1, 0);     // đọc dữ liệu từ socket
-    if (prompt_size > 0) {
-        prompt[prompt_size] = '\0';
-        std::cout << prompt;
+std::string prompt;
+
+if (!receiveLine(client_fd, prompt)) {
+    perror("recv");
+    close(client_fd);
+    return 1;
+}
+
+std::cout << prompt << std::endl;
+
+std::string username;
+
+while (true) {
+    if (!std::getline(std::cin, username)) {
+        close(client_fd);
+        return 1;
     }
 
-    std::string username;
-    std::cout << "Your name: ";
-    std::getline(std::cin, username);    // client nhập tên 
-//    send(client_fd, username.c_str(), username.size(), 0);   // Clinet gửi tên tới server => server lưu vào map
-    username += "\n";
-
-    if(!sendAll(client_fd, username)) {
+    if (!sendAll(client_fd, username + "\n")) {
         perror("send");
         close(client_fd);
         return 1;
     }
+
+    std::string response;
+
+    if (!receiveLine(client_fd, response)) {
+        perror("recv");
+        close(client_fd);
+        return 1;
+    }
+
+    if (response == "USERNAME_OK") {
+        break;
+    }
+
+    if (response == "USERNAME_TAKEN") {
+        std::cout
+            << "Name already in use. Please enter another name."
+            << std::endl;
+        std::string retry_prompt;
+        if(!receiveLine(client_fd, retry_prompt)) {
+            perror("recv");
+            close(client_fd);
+            return 1;
+        }
+        std::cout << retry_prompt;
+        continue;
+    }
+
+    std::cerr << "Unknown server response: "
+              << response
+              << std::endl;
+
+    close(client_fd);
+    return 1;
+}
+    
 /*
 *Thread nhận tin nhắn từ server:
 - Đây là thread riêng để lắng nghe incoming mesages

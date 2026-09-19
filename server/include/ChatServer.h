@@ -9,7 +9,7 @@
 
 class ChatRoom {
 public:
-    void addClient(int client_fd, const std::string& username);
+    bool addClient(int client_fd, const std::string& username);
     void removeClient(int client_fd);
     void broadcast(const std::string& message, int sender_fd = -1) const;
 
