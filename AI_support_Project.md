@@ -52,6 +52,36 @@ và kết quả kiểm tra.
 - Cần lưu ý receiver thread và input thread cùng ghi terminal nên output có thể
   bị chồng nếu message đến đúng lúc người dùng đang nhập.
 
+### 2026-09-19 - Multiline draft với `/send`
+
+- Client được cập nhật để gom nhiều dòng vào một draft.
+- Nhập từng dòng bằng Enter chỉ cập nhật draft local.
+- `/send` gửi toàn bộ draft thành một frame.
+- `/cancel` xóa draft local mà không gửi lên server.
+- Newline bên trong draft được encode thành `\n`; backslash được escape thành
+  `\\`.
+- Server được cập nhật với `pending_data` để xử lý TCP stream framing, tách
+  nhiều frame trong một lần `recv()` và ghép frame bị chia qua nhiều lần
+  `recv()`.
+- Server decode `\n` thành newline thật trước khi broadcast, nên nhiều dòng
+  nhận được một prefix duy nhất.
+- Thêm `sendAll()` ở client/server để xử lý partial send và dùng `MSG_NOSIGNAL`.
+- Build command đã được yêu cầu nhưng thao tác build bị từ chối quyền trong
+  phiên hiện tại; cần chạy `make clean && make all` thủ công để xác nhận.
+
+### 2026-09-19 - Ý nghĩa của `/send` trong message nhiều dòng
+
+- Với client hiện tại, `/send` là lệnh local dùng để kết thúc draft và gửi
+  toàn bộ nội dung nhiều dòng thành một frame.
+- Đây là application-level protocol/control command và cũng thể hiện state
+  machine của client: đang soạn draft, gửi draft hoặc hủy draft.
+- Enter thông thường chỉ kết thúc một lần `std::getline()`, nên client không
+  thể portable phân biệt Enter với Shift+Enter trong terminal canonical mode.
+- Các phương án thay thế `/send`: dùng một phím kết thúc khác như Ctrl+D,
+  dùng terminal raw mode để bắt phím, dùng `readline`/`ncurses`, hoặc chuyển
+  sang GUI. Phương án đơn giản và ổn định nhất cho code hiện tại vẫn là
+  `/send`; phương án UX tốt hơn là raw terminal/readline.
+
 ### 2026-09-13 - Makefile
 
 - `make` hoặc `make all`: build `bin/chat_server` và `bin/chat_client`.
@@ -151,4 +181,22 @@ Các việc nên làm ngay theo thứ tự ngắn hạn:
 3. atomic running_ và shutdown an toàn
 4. unit tests cho ChatRoom/command parser
 5. cập nhật Makefile và README theo code thực tế
+
+### 2026-09-19 - Test plan cho giai đoạn protocol
+
+- Đã tạo [docs/protocol-test-plan.md](./docs/protocol-test-plan.md).
+- Test plan tập trung vào framing TCP, partial `send`/`recv`, nhiều frame trong
+  một lần gửi, frame bị chia nhỏ, giới hạn kích thước, command, disconnect và
+  lỗi socket.
+- Có 30 test case mã hóa từ `P-001` đến `P-030`, phân loại P0/P1/P2.
+- Bộ smoke test tối thiểu gồm `P-001`, `P-002`, `P-003`, `P-005`, `P-006`,
+  `P-007`, `P-009`, `P-010`, `P-013`, `P-016`, `P-018`, `P-022`, `P-027`.
+- Các lỗi có khả năng xảy ra trong implementation hiện tại: xử lý một
+  `recv()` như một message hoàn chỉnh, không tách nhiều frame trong cùng
+  buffer, chưa xử lý partial `send`, giới hạn buffer và ký tự `\r`.
+- Đã bổ sung các kịch bản chạy trực tiếp trên terminal bằng Python socket:
+  message bị chia thành hai `send`, nhiều message trong một `send`, message
+  thiếu newline, payload lớn hơn buffer, username có whitespace, username
+  trùng, nhiều command trong một `send`, client đóng khi broadcast và kiểm tra
+  server có còn accept client mới sau lỗi.
 ```

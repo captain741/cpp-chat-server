@@ -7,7 +7,46 @@
 #include <thread>
 #include <unistd.h>
 
-int main() {
+/*
+-Gửi toàn bộ chuỗi dữ liệu qua socket
+-Hàm trả về true nếu gửi thành công toàn bộ/ trả về false nếu socket bị lỗi hoặc đóng.
+*/
+namespace {
+    bool sendAll(int socket_fd, const std::string& data) {
+        std::size_t total_sent = 0;     // số byte đã gửi thành công 
+
+        while (total_sent < data.size()) {     // tiếp tục cho đến khi toàn bộ data dc gửi
+            const ssize_t bytes_sent = send(
+                socket_fd,                       // file descreptor cuar socket
+                data.data() + total_sent,       // vị trí du lieu chua gui
+                data.size() - total_sent,       // so byte con lai
+                MSG_NOSIGNAL                    // tranh SIGIPE khi socket da dong
+            );
+
+            // send() tra ve so byte da gui
+            // Gia tri <= 0 nghia la co loi or ket noi da dong
+            if(bytes_sent <= 0) {
+                return false;
+            }
+            // cong so byte vua gui vao tong so byte da gui.
+            total_sent += static_cast<std::size_t>(bytes_sent);;
+        }
+        return true;     // toan bo chuoi dc gui thanh cong
+    }
+
+std::string encodeDraftLine(const std::string& line) {
+    std::string encoded;
+    for(char character : line) {
+        if(character == '\\') {
+            encoded += "\\\\";
+        } else {
+            encoded += character;
+        } 
+    }
+    return encoded;
+}
+}
+int main() { 
     // địa chỉ server đang chạy
     const char* server_ip = "127.0.0.1";     // client kết nối với local host (127.0.0.1)
     const int server_port = 8080;
@@ -46,7 +85,14 @@ int main() {
     std::string username;
     std::cout << "Your name: ";
     std::getline(std::cin, username);    // client nhập tên 
-    send(client_fd, username.c_str(), username.size(), 0);   // Clinet gửi tên tới server => server lưu vào map
+//    send(client_fd, username.c_str(), username.size(), 0);   // Clinet gửi tên tới server => server lưu vào map
+    username += "\n";
+
+    if(!sendAll(client_fd, username)) {
+        perror("send");
+        close(client_fd);
+        return 1;
+    }
 /*
 *Thread nhận tin nhắn từ server:
 - Đây là thread riêng để lắng nghe incoming mesages
@@ -64,18 +110,47 @@ int main() {
             std::cout << buffer << std::flush;
         }
     });
-// vòng lặp gửi tin nhắn 
-    std::string message;
-    while (std::getline(std::cin, message)) {
-        if (message.empty()) {
+// // vòng lặp gửi tin nhắn 
+//     std::string message;
+//     while (std::getline(std::cin, message)) {
+//         if (message.empty()) {
+//             continue;
+//         }
+
+//         if (send(client_fd, message.c_str(), message.size(), 0) == -1) {
+//             perror("send");
+//             break;
+//         }
+//     }
+// xử lí phần gửi tin nhắn 
+std::string line;
+std::string draft;
+while (std::getline(std::cin, line)) {
+    if(line == "/cancel") {
+        draft.clear();
+        std::cout << "Draft cancelled." << std::endl;
+        continue;
+    }
+    if(line == ".") {
+        if(draft.empty()) {
+            std::cout << "Nothing to send." << std::endl;
             continue;
         }
+        // them newline that de server biet frame da ket thuc
+        const std::string frame = draft + "\n";
 
-        if (send(client_fd, message.c_str(), message.size(), 0) == -1) {
+        if(!sendAll(client_fd, frame)) {
             perror("send");
             break;
         }
+        draft.clear();
+        continue;
     }
+    if(!draft.empty()) {
+        draft += "\\n";
+    }
+    draft += encodeDraftLine(line);
+}
 
     close(client_fd);    // đóng socket 
     receiver.join();     // đợi thread receiver kết thúc rồi mới exit
